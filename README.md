@@ -50,24 +50,46 @@ kubectl get pods -n apache -w
 ```
 
 Test — method B: non-interactive Job (reproducible)
+This repository includes `load-job.yaml` so you can run a non-interactive, repeatable load generator instead of the interactive BusyBox.
+
+1) Apply the load Job (creates a pod that continuously requests the service):
 ```bash
 kubectl apply -f load-job.yaml -n apache
-# stop and remove:
-kubectl delete job apache-load-job -n apache
 ```
 
-Observe expected behavior
-- Under sustained load HPA increases replicas (you saw up to 4).
-- After stopping load HPA scales back to 1 over time.
+2) Inspect the Job and its Pod(s):
+```bash
+kubectl get job apache-load-job -n apache
+kubectl get pods -n apache -l job-name=apache-load-job
+# to stream logs from the load pod (replace POD_NAME):
+kubectl logs -n apache -f POD_NAME
+```
 
-Why resource requests & limits (short)
-- requests: reserve CPU/memory so scheduler places pods correctly.
-- limits: cap usage to prevent noisy neighbors.
-- HPA CPU% is calculated against requested CPU — set requests for correct scaling.
+Notes about the Job
+- The Job runs an infinite loop (the pod will keep making requests). Stop it by deleting the Job (see cleanup below).
+- `backoffLimit: 0` is set so the Job won't retry on failure; it's intended as a continuously-running load generator.
+- The BusyBox image used contains `wget` for simple HTTP requests. If your cluster restricts images, replace with another small tool image.
+- You can adjust the request rate by changing or removing `sleep 0.1` in `load-job.yaml`.
+
+Verification — observe HPA and pods
+- Watch the HPA scale-up under sustained load:
+```bash
+kubectl get hpa -n apache -w
+kubectl describe hpa/apache-hpa -n apache
+```
+- Watch pods and resource usage:
+```bash
+kubectl get pods -n apache -w
+kubectl top pods -n apache
+kubectl top nodes
+```
+Expected behavior
+- Under sustained load the HPA should increase replicas (up to the `maxReplicas` set in `hpa.yaml`, you may see up to 4).
+- After you delete the load Job, the HPA should scale back down to the `minReplicas` (1) over time as CPU usage falls.
 
 Quick cleanup
 ```bash
-kubectl delete -f load-job.yaml -n apache  # if used
+kubectl delete -f load-job.yaml -n apache  # stop/remove the load generator
 kubectl delete -f hpa.yaml -n apache
 kubectl delete -f service.yaml -n apache
 kubectl delete -f deployment.yaml -n apache
@@ -81,4 +103,3 @@ You can also do this (practical)
 
 Notes
 - The author used an EC2 node with ~20 GB storage for testing. Node CPU/RAM determine how many pods you can run — adjust requests/limits accordingly.
-
