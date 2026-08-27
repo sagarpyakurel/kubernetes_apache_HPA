@@ -102,4 +102,4 @@ You can also do this (practical)
 - Optional extras: add readiness/liveness probes, add resource limits for load job, add monitoring stack (Prometheus/Grafana).
 
 Notes
-- The author used an EC2 node with ~20 GB storage for testing. Node CPU/RAM determine how many pods you can run — adjust requests/limits accordingly.
+- The author used an EC2 instance = t2-medium. Node CPU/RAM determine how many pods you can run — adjust requests/limits accordingly.
