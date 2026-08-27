@@ -2,102 +2,83 @@
 
 Apache HTTP Server on Kubernetes with Horizontal Pod Autoscaling (HPA).
 
-Quick — what this repo contains
-- namespace.yaml : Namespace `apache`.
-- deployment.yaml : Deployment `apache-deployment` (image: httpd:latest) with resource requests/limits (cpu: 100m / 200m, memory: 128Mi / 256Mi).
-- service.yaml : ClusterIP service `apache-service`.
-- hpa.yaml     : HPA `apache-hpa` (min:1, max:4, cpu target: averageUtilization: 4 in repo).
-- config.yaml  : kind cluster config used by the author (optional).
+Files in this repo (main)
+- namespace.yaml — Namespace: `apache`
+- deployment.yaml — Deployment `apache-deployment` (image: `httpd:latest`) with resources: requests 100m/128Mi, limits 200m/256Mi
+- service.yaml — ClusterIP `apache-service` (port 80)
+- hpa.yaml — HPA `apache-hpa` (min:1, max:4, averageUtilization: 50)
+- load-job.yaml — non-interactive BusyBox load Job (reproducible)
+- config.yaml — kind cluster config (optional)
 
-Note: the HPA target in hpa.yaml is set to `averageUtilization: 4` (very low). For real workloads use a higher value (e.g., 40 or 50).
+Prerequisites
+- kubectl configured to your cluster
+- metrics-server installed (HPA needs CPU metrics)
 
-Prerequisites (minimal)
-- kubectl configured to your cluster.
-- metrics-server installed (HPA needs it for CPU metrics).
-
-Deploy (one-liners)
-
+Deploy (apply manifests)
 ```bash
-# apply resources (namespace, deployment, service, hpa)
 kubectl apply -f namespace.yaml
 kubectl apply -f deployment.yaml
 kubectl apply -f service.yaml
 kubectl apply -f hpa.yaml
-
-# confirm
 kubectl get ns,deploy,svc,hpa -n apache
 ```
 
 Install metrics-server (quick)
-
-1) Apply the official metrics-server manifest:
-
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.6.1/components.yaml
-```
-
-2) Edit the metrics-server deployment to allow insecure kubelet TLS:
-
-```bash
+# then edit and add the kubelet TLS flag:
 kubectl -n kube-system edit deployment metrics-server
-# under containers[0].args add the line:
+# add under containers[0].args:
 # - --kubelet-insecure-tls
-# Save and exit the editor.
-```
-
-3) Restart metrics-server:
-
-```bash
 kubectl -n kube-system rollout restart deployment metrics-server
-```
-
-4) Verify metrics are available:
-
-```bash
 kubectl top nodes
 kubectl top pods -A
 ```
 
-Stress test (same approach you used)
-
-1) Start BusyBox shell in the same namespace:
-
+Test — method A: interactive BusyBox (your original)
+Terminal A:
 ```bash
 kubectl run load-generator -n apache --image=busybox -it --rm --restart=Never -- /bin/sh
-```
-
-2) Inside BusyBox run a loop that hits the service:
-
-```sh
+# inside BusyBox:
 while true; do wget -q -O- http://apache-service.apache.svc.cluster.local; done
+# Ctrl+C to stop (exits and removes pod)
 ```
-
-3) Watch scaling from another terminal:
-
+Terminal B: (observe)
 ```bash
 kubectl get hpa -n apache -w
 kubectl get pods -n apache -w
 ```
 
-Expected behavior (from your testing)
-- Under continuous load the HPA will increase replicas (you observed scaling up to 4 pods).
-- After stopping the BusyBox loop, HPA will reduce replicas back to the minimum (1) over time.
+Test — method B: non-interactive Job (reproducible)
+```bash
+kubectl apply -f load-job.yaml -n apache
+# stop and remove:
+kubectl delete job apache-load-job -n apache
+```
 
-Why resource requests & limits matter (short)
-- requests: tells the scheduler how much CPU/memory the pod needs so it places pods correctly.
-- limits: caps what a container can use so one pod won't starve others.
-- HPA CPU% is calculated vs the requested CPU. If requests are missing or wrong, HPA decisions will be inaccurate.
+Observe expected behavior
+- Under sustained load HPA increases replicas (you saw up to 4).
+- After stopping load HPA scales back to 1 over time.
+
+Why resource requests & limits (short)
+- requests: reserve CPU/memory so scheduler places pods correctly.
+- limits: cap usage to prevent noisy neighbors.
+- HPA CPU% is calculated against requested CPU — set requests for correct scaling.
 
 Quick cleanup
-
 ```bash
+kubectl delete -f load-job.yaml -n apache  # if used
 kubectl delete -f hpa.yaml -n apache
 kubectl delete -f service.yaml -n apache
 kubectl delete -f deployment.yaml -n apache
 kubectl delete -f namespace.yaml
 ```
 
-Suggested small improvements (optional)
-- Fix hpa.yaml averageUtilization to a realistic value (e.g., 40 or 50).
-- Add an optional non-interactive load Job manifest for reproducible tests.
+You can also do this (practical)
+- Change HPA target: averageUtilization → 50 (done in this repo) to avoid aggressive scaling.
+- Use the non-interactive load job for repeatable tests (load-job.yaml present).
+- Optional extras: add readiness/liveness probes, add resource limits for load job, add monitoring stack (Prometheus/Grafana).
+
+Notes
+- The author used an EC2 node with ~20 GB storage for testing. Node CPU/RAM determine how many pods you can run — adjust requests/limits accordingly.
 
