@@ -28,6 +28,36 @@ kubectl apply -f hpa.yaml
 kubectl get ns,deploy,svc,hpa -n apache
 ```
 
+Install metrics-server (quick)
+
+1) Apply the official metrics-server manifest:
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.6.1/components.yaml
+```
+
+2) Edit the metrics-server deployment to allow insecure kubelet TLS:
+
+```bash
+kubectl -n kube-system edit deployment metrics-server
+# under containers[0].args add the line:
+# - --kubelet-insecure-tls
+# Save and exit the editor.
+```
+
+3) Restart metrics-server:
+
+```bash
+kubectl -n kube-system rollout restart deployment metrics-server
+```
+
+4) Verify metrics are available:
+
+```bash
+kubectl top nodes
+kubectl top pods -A
+```
+
 Stress test (same approach you used)
 
 1) Start BusyBox shell in the same namespace:
@@ -69,7 +99,5 @@ kubectl delete -f namespace.yaml
 
 Suggested small improvements (optional)
 - Fix hpa.yaml averageUtilization to a realistic value (e.g., 40 or 50).
-- Add a README example that shows installing metrics-server.
-- Add an optional non-interactive load Job manifest if you want reproducible tests.
+- Add an optional non-interactive load Job manifest for reproducible tests.
 
-If you want, I can now replace README.md with this concise version (I will), and optionally update hpa.yaml to use averageUtilization: 50. Which should I do next?
