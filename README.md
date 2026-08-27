@@ -1,4 +1,4 @@
-# kubernetes_apache_HPA — concise guide
+# kubernetes_apache_HPA 
 
 Apache HTTP Server on Kubernetes with Horizontal Pod Autoscaling (HPA).
 
